@@ -40,6 +40,7 @@ register_plugin_files(plugin.c
 add_plugin_library(t3z0s epan)
 
 target_link_libraries(t3z0s epan)
+target_link_libraries(t3z0s t3z0s_rs)
 
 install_plugin(t3z0s epan)
 

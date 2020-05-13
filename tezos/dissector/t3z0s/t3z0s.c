@@ -3,75 +3,42 @@
 #include "config.h"
 #include <epan/packet.h>
 
+/* This is defined in Rust */
+struct T3zosDissectorInfo {
+    int hf_phrase;
+    int hf_word;
+};
+
+extern int t3z03s_dissect_packet(struct T3zosDissectorInfo*, tvbuff_t*, proto_tree*);
+/* End of section shared with Rust */
+
 static int proto_t3z0s = -1;
-static int hf_phrase = -1;
-static int hf_word = -1;
+static struct T3zosDissectorInfo info = {
+    -1,
+    -1,
+};
 static gint ett_t3z0s = -1; // Subtree
-
-static void add_phrase(tvbuff_t *tvb, proto_tree *t_tree)
-{
-    const guint8 *str = NULL;
-    gint len = -1;
-    proto_tree_add_item_ret_string_and_length(t_tree, hf_phrase, tvb, 0, -1, ENC_UTF_8, wmem_packet_scope(), &str, &len);
-}
-
-static void add_word(tvbuff_t *tvb, proto_tree *t_tree, const int beg, const int end)
-{
-    const int word_length = end - beg;
-    if (word_length <= 0)
-        return;
-
-    const guint8 *_str = NULL;
-    gint _len = -1;
-    proto_tree_add_item_ret_string_and_length(t_tree, hf_word, tvb, beg, word_length, ENC_UTF_8, wmem_packet_scope(), &_str, &_len);
-}
-
-
-static int is_space(const guint8 c)
-{
-    return c == ' ' || c == '\t' || c == '\n';
-}
-
-static void add_words(tvbuff_t *tvb, proto_tree *t_tree)
-{
-    const int len = tvb_captured_length(tvb);
-    int prev = -1;
-    for (int i = 0; i < len; ++i)
-    {
-        const guint8 c = tvb_get_guint8(tvb, i);
-        if (is_space(c))
-        {
-            add_word(tvb, t_tree, prev + 1, i);
-            prev = i;
-        }
-    }
-    add_word(tvb, t_tree, prev + 1, len);
-}
 
 static int
 dissect_t3z0s(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "t3z0s");
-    /* Clear the info column */
-    col_clear(pinfo->cinfo,COL_INFO);
+    (void)pinfo;
 
     proto_item *ti = proto_tree_add_item(tree, proto_t3z0s, tvb, 0, -1, ENC_NA);
     proto_tree *t_tree = proto_item_add_subtree(ti, ett_t3z0s);
-    add_phrase(tvb, t_tree);
-    add_words(tvb, t_tree);
-    return tvb_captured_length(tvb);
+    return t3z03s_dissect_packet(&info, tvb, t_tree);
 }
 
 void
 proto_register_t3z0s(void)
 {
     static hf_register_info hf[] = {
-        { &hf_phrase,
+        { &info.hf_phrase,
             { "T3z0s Phrase", "t3z0s.phrase",
             FT_STRING, BASE_NONE,
             NULL, 0x0, NULL, HFILL }
         },
-        { &hf_word,
+        { &info.hf_word,
             { "T3z0s Word", "t3z0s.word",
             FT_STRING, BASE_NONE,
             NULL, 0x0, NULL, HFILL }

@@ -3,13 +3,22 @@ Ubuntu 20.04 Build
 
               # apt update
               # apt install build-essential git cmake libglib2.0-dev libgcrypt-dev libc-ares-dev libpcap-dev bison flex  qttools5-dev qtmultimedia5-dev
+              $ cd /path/to/tezos/dissector/t3z0s/t3z0s_rs &&
+                cargo clean && cargo build &&
+                cp -v target/debug/libt3z0s_rs.a /usr/lib/
+                && cd -
               $ git clone https://github.com/wireshark/wireshark.git
+              $ cd wireshark/plugins/epan &&
+                ln -s /path/to/tezos/dissector/t3z0s . &&
+                cd -
               $ mkdir build && cd build
         build $ cmake ../wireshark
         build $ make
+              # mkdir /usr/local/lib/wireshark/plugins/3.3 &&
+                cd /usr/local/lib/wireshark/plugins/3.3 &&
+                ln -s /path/to/wireshark/build/run/plugins/3.3/epan . &&
+                cd -
         build $ run/tshark
-              # mkdir /usr/local/lib/wireshark/plugins/3.3 && cd /usr/local/lib/wireshark/plugins/3.3
-              # ln -s /wireshark/build/run/plugins/3.3/epan .
 
 Verify that plugin is installed
 -------------------------------
@@ -24,7 +33,8 @@ Simple Session
 
 - Terminal 1:
 
-               $ echo 'Hello World YXZ' | nc -u 127.0.0.1 1024
+               $ run/tshark -i lo -w /tmp/xyz.pcap
+
 
 - Terminal 2:
 
@@ -32,7 +42,10 @@ Simple Session
 
 - Terminal 3:
 
-               $ run/tshark -i lo -w /tmp/xyz006.pcap
+               $ echo 'Hello World YXZ' | nc -u 127.0.0.1 1024
+
+- Continue in Terminal 1:
+
                $ run/tshark -r /tmp/xyz.pcap
                    1 0.000000000    127.0.0.1 ? 127.0.0.1    t3z0s 58
                    ...
@@ -40,11 +53,8 @@ Simple Session
                    ...
                    5 1.842787799    127.0.0.1 ? 127.0.0.1    t3z0s 58
 
-
-
-                  Internet Protocol Version 4, Src: 127.0.0.1, Dst: 127.0.0.1
-                $ run/tshark -Vr /tmp/xyz006.pcap
-                    ...
+                $ run/tshark -Vr /tmp/xyz.pcap
+                   ...
                 Internet Control Message Protocol
                     Type: 3 (Destination unreachable)
                     Code: 3 (Port unreachable)
