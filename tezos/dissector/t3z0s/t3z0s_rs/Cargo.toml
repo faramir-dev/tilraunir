@@ -15,3 +15,8 @@ crate-type = ["staticlib"]
 
 [dependencies]
 libc = "0.2.0"
+crypto = { version="*", git = "https://github.com/hagrid-the-developer/tezedge" }
+networking = { version="*", git = "https://github.com/hagrid-the-developer/tezedge" }
+tezos_messages = { version="*", git = "https://github.com/hagrid-the-developer/tezedge" }
+tezos_encoding = { version="*", git = "https://github.com/hagrid-the-developer/tezedge" }
+storage = { version = "*", git = "htps://github.com/hagrid-the-developer/tezedge" }
