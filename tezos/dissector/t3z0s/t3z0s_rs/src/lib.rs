@@ -10,6 +10,7 @@ use libc::{c_int, c_uint};
 // Functions from Wireshark that are used by this dissector
 extern "C" {
     fn tvb_get_guint8(tvb: *mut tvbuff_t, offset: c_int /* gint */) -> u8;
+    fn tvb_get_ptr(tvb: *mut tvbuff_t, offset: c_int /* gint */, length: c_int /* gint */) -> *mut u8;
     fn tvb_captured_length(tvb: *mut tvbuff_t) -> c_uint /* guint */;
     fn wmem_packet_scope() -> *mut wmem_allocator_t;
     fn proto_tree_add_item_ret_string_and_length(
@@ -34,6 +35,18 @@ pub struct T3zosDissectorInfo {
 
 fn get_info_safe<'a>(p_info: *const T3zosDissectorInfo) -> &'a T3zosDissectorInfo {
     unsafe { &*p_info }
+}
+
+fn get_data_safe<'a>(tvb: *mut tvbuff_t) -> &'a [u8] {
+    let ulen = tvb_captured_length_safe(tvb);
+    unsafe {
+        // According to Wireshark documentation:
+        //   https://www.wireshark.org/docs/wsar_html/group__tvbuff.html#ga31ba5c32b147f1f1e57dc8326e6fdc21
+        // `get_raw_ptr()` should not be used, but it looks as easiest solution here.
+        std::slice::from_raw_parts(
+            tvb_get_ptr(tvb, 0, ulen as c_int),
+            ulen as usize)
+    }
 }
 
 fn tvb_get_guint8_safe(tvb: *mut tvbuff_t, offset: c_int /* gint */) -> u8 {
