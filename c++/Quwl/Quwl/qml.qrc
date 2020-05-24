@@ -4,6 +4,8 @@
         <file>Main.qml</file>
         <file>LoginDialogForm.qml</file>
         <file>ProjectsListDelegate.qml</file>
+        <file>TestLayout.qml</file>
+        <file>TestLayoutForm.ui.qml</file>
     </qresource>
     <qresource prefix="/images"/>
     <qresource prefix="/imgs"/>
