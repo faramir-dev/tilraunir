@@ -136,7 +136,7 @@ fn main() {
     std::thread::spawn(move || {
         let stdin = std::io::stdin();
         let stdin_lock = stdin.lock();
-        futures::stream::iter(stdin_lock.lines())
+        futures::stream::iter_result(stdin_lock.lines())
             .for_each(|line| {
                 let recv_sink_opt = receiver.lock().unwrap();
                 match recv_sink_opt.as_ref() {
