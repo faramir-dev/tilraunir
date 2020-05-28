@@ -1622,8 +1622,11 @@ name = "t3z0s_rs"
 version = "0.1.0"
 dependencies = [
  "crypto",
+ "failure",
+ "hex",
  "libc",
  "networking",
+ "serde 1.0.110",
  "storage",
  "tezos_encoding",
  "tezos_messages",
