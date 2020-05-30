@@ -6,6 +6,14 @@
 #include <epan/dissectors/packet-tcp.h>
 #include <stdio.h>
 
+// Simple logger for development
+#define MSG(format, ...) \
+    do { \
+        FILE *f = fopen("/tmp/xyz.log", "a"); \
+        if (f != NULL) fprintf(f, "C: " format, __VA_ARGS__); \
+        fclose(f); \
+    } while (0)
+
 /* This is shared with Rust */
 
 struct T3zosDissectorInfo {
@@ -15,7 +23,7 @@ struct T3zosDissectorInfo {
     int hf_word;
 };
 
-extern int t3z03s_dissect_packet(struct T3zosDissectorInfo*, tvbuff_t*, proto_tree*, const struct tcp_analysis*);
+extern int t3z03s_dissect_packet(struct T3zosDissectorInfo*, tvbuff_t*, proto_tree*, const packet_info*, const struct tcp_analysis*);
 extern int t3z03s_free_conv_data(void*);
 /* End of section shared with Rust */
 
@@ -33,15 +41,12 @@ static gboolean wmem_cb(wmem_allocator_t* allocator, wmem_cb_event_t ev, void *d
 {
     switch (ev) {
         case WMEM_CB_FREE_EVENT:
-            {FILE *f = fopen("/tmp/xyz.log", "a");
-            fprintf(f, "Freeing memory allocator: %p %p\n", allocator, data);
-            fclose(f);}
+            MSG("Freeing memory allocator: %p %p\n", allocator, data);
             t3z03s_free_conv_data(data);
             break;
         case WMEM_CB_DESTROY_EVENT:
-            {FILE *f = fopen("/tmp/xyz.log", "a");
-            fprintf(f, "destroy: %p\n", allocator);
-            fclose(f);}
+            MSG("destroy: %p\n", allocator);
+            break;
     }
 
     return TRUE;
@@ -58,7 +63,6 @@ int dissect_t3z0s_old(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
     conversation_t *conv = find_or_create_conversation(pinfo);
     DISSECTOR_ASSERT_HINT(conv, "find_or_create_conversation() returned NULL");
 
-    // FIXME: Is callback registered only once?
     struct tcp_analysis *tcpd = get_tcp_conversation_data(conv, pinfo);
     void *convd = conversation_get_proto_data(conv, proto_t3z0s);
     if (!convd)
@@ -70,10 +74,8 @@ int dissect_t3z0s_old(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
     proto_item *ti = proto_tree_add_item(tree, proto_t3z0s, tvb, 0, -1, ENC_NA);
     proto_tree *t_tree = proto_item_add_subtree(ti, ett_t3z0s);
     proto_tree_add_int64_format(t_tree, info.hf_payload_len, tvb, 0, 0, (int64_t)conv, "T3z0s conversation: %p", conv); // XYZ: Dbg.
-    {FILE *f = fopen("/tmp/xyz.log", "a");
-    fprintf(f, "conv: %p %p\n", wmem_file_scope(), conv);
-    fclose(f);}
-    return t3z03s_dissect_packet(&info, tvb, t_tree, tcpd);
+    MSG("conv: %p %p\n", wmem_file_scope(), conv);
+    return t3z03s_dissect_packet(&info, tvb, t_tree, pinfo, tcpd);
 }
 
 static gboolean

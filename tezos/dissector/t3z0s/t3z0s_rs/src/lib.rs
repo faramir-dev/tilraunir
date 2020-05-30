@@ -3,6 +3,7 @@ use libc::{c_int, c_uint, c_void};
 use std::{
     boxed::Box,
     collections::HashMap,
+    net::IpAddr,
     option::Option,
     net::SocketAddr,
     convert::TryFrom,
@@ -28,6 +29,9 @@ use logger::msg;
 
 mod wireshark;
 use wireshark::packet::packet_info;
+
+mod error;
+use error::NotT3z0sStreamError;
 
 // Opaque structs from Wireshark
 #[repr(C)] pub struct tvbuff_t { _private: [u8; 0] }
@@ -72,23 +76,69 @@ pub struct T3zosDissectorInfo {
     hf_word: c_int
 }
 
+#[derive(Debug, Clone)]
 struct Conversation {
-    counter: u32,
+    counter: u64,
+    conn_msg_local: Option<ConnectionMessage>,
+    conn_msg_remote: Option<ConnectionMessage>,
 }
 impl Conversation {
     pub fn new() -> Self {
-        Conversation { counter: 0 }
+        Conversation { counter: 0, conn_msg_local: None, conn_msg_remote: None }
     }
 
-    pub fn process_unencrypted_msg(self: &Self, payload: Vec<u8>) -> Result<ConnectionMessage, Error> {
-        let chunk = BinaryChunk::try_from(payload)?;
-        let conn_msg = ConnectionMessage::try_from(chunk)?;
-        Ok(conn_msg)
+    fn is_ok(self: &Self) -> bool {
+        match self.counter {
+            0 => true,
+            1 => self.conn_msg_local.is_some(),
+            _ => self.conn_msg_local.is_some() && self.conn_msg_remote.is_some()
+        }
     }
+
+    fn inc_counter(&mut self) -> u64 {
+        self.counter += 1;
+        self.counter
+    }
+
+    pub fn process_packet(
+        self: &mut Self,
+        info: &T3zosDissectorInfo, pinfo: &packet_info,
+        tvb: *mut tvbuff_t, proto_tree: *mut proto_tree,
+        tcpd: *const tcp_analysis
+    ) -> Result<(), failure::Error> {
+
+        if self.is_ok() { Ok(()) } else { Err(NotT3z0sStreamError) }?;
+
+        let counter = self.inc_counter();
+        if counter <= 2 {
+            let payload = get_data_safe(tvb);
+            let conn_msg = process_unencrypted_msg(payload.to_vec())?;
+
+            msg(format!("packet: count:{} src_addr:{:?} dst_addr:{:?} conn_msg_res: {:?}", self.counter, IpAddr::try_from(pinfo.src).unwrap(), IpAddr::try_from(pinfo.dst).unwrap(), conn_msg));
+
+            match counter {
+                1 => self.conn_msg_local = Some(conn_msg),
+                2 => self.conn_msg_remote = Some(conn_msg),
+                _ => (),
+            };
+        }
+
+        Ok(())
+    }
+}
+
+pub fn process_unencrypted_msg(payload: Vec<u8>) -> Result<ConnectionMessage, failure::Error> {
+    let chunk = BinaryChunk::try_from(payload)?;
+    let conn_msg = ConnectionMessage::try_from(chunk)?;
+    Ok(conn_msg)
 }
 
 fn get_info_safe<'a>(p_info: *const T3zosDissectorInfo) -> &'a T3zosDissectorInfo {
     unsafe { &*p_info }
+}
+
+fn get_packet_info_safe<'a>(p_pinfo: *const packet_info) -> &'a packet_info {
+    unsafe { &*p_pinfo }
 }
 
 fn get_data_safe<'a>(tvb: *mut tvbuff_t) -> &'a [u8] {
@@ -194,9 +244,10 @@ pub extern "C" fn t3z03s_free_conv_data(p_data: *mut c_void) {
 pub extern "C" fn t3z03s_dissect_packet(
         p_info: *const T3zosDissectorInfo,
         tvb: *mut tvbuff_t, proto_tree: *mut proto_tree,
-        tcpd: *const tcp_analysis
+        p_pinfo: *const packet_info, tcpd: *const tcp_analysis
 ) -> c_int {
     let info = get_info_safe(p_info);
+    let pinfo = get_packet_info_safe(p_pinfo);
 
     let ulen = tvb_captured_length_safe(tvb);
     let len = ulen as c_int;
@@ -209,8 +260,6 @@ pub extern "C" fn t3z03s_dissect_packet(
             get_conv_map().get_mut(&tcpd).unwrap()
         }
     };
-
-    conv.counter += 1;
 
     proto_tree_add_int64_safe(proto_tree, info.hf_payload_len, tvb, 0, 0, len as i64);
     proto_tree_add_int64_safe(proto_tree, info.hf_packet_counter, tvb, 0, 0, conv.counter as i64);
@@ -226,10 +275,10 @@ pub extern "C" fn t3z03s_dissect_packet(
 
     add_words(info, tvb, proto_tree, len);
 
-    let payload = get_data_safe(tvb);
-    let conn_msg_opt = conv.process_unencrypted_msg(payload.to_vec());
+    if let Err(e) = conv.process_packet(info, pinfo, tvb, proto_tree, tcpd) {
+        msg(format!("E: Cannot process packet: {}", e));
+    }
 
-    msg(format!("packet: count:{} conn_msg_opt: {:?}", conv.counter, conn_msg_opt));
 
     len
 }

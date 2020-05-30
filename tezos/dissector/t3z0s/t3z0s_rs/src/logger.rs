@@ -6,7 +6,7 @@ use std::io::{Result, Write};
 //   it is not possible to print to stdout/stderr inside wireshark/tshark.
 fn msg_detail(msg: &str) -> Result<()> {
     let mut f = OpenOptions::new().append(true).create(true).open("/tmp/xyz.log")?;
-    writeln!(f, "XYZ: {}", msg)?;
+    writeln!(f, "R: {}", msg)?;
     Ok(())
 }
 
