@@ -13,6 +13,7 @@ Ubuntu 20.04 Build
                 ln -s /path/to/tezos/dissector/t3z0s . &&
                 cd -
               $ mkdir build && cd build
+              $ cd /path/to/wireshark && patch -p1 </path/to/tezos/dissector/t3z0s/wireshark.diff && cd -
         build $ cmake ../wireshark
         build $ make
               # mkdir /usr/local/lib/wireshark/plugins/3.3 &&
@@ -33,19 +34,6 @@ Simple Session
 --------------
 
 - Terminal 1:
-
-               $ LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libsodium.so run/tshark -i lo -w /tmp/xyz.pcap
-
-
-- Terminal 2:
-
-               $ nc -lvu 1024
-
-- Terminal 3:
-
-               $ echo 'Hello World YXZ' | nc -u 127.0.0.1 1024
-
-- Continue in Terminal 1:
 
                $ LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libsodium.so run/tshark -r /tmp/xyz.pcap
                    1 0.000000000    127.0.0.1 ? 127.0.0.1    t3z0s 58
@@ -93,7 +81,7 @@ Simple Session
                         T3z0s conversation: 0x7f0b31574890
                         [truncated]T3z0s Msg: counter:1; addr_local:172.18.0.2:60064; addr_remote:51.15.220.7:9732; conn_msg_local:Some(ConnectionMessage { port: 19732, versions: [Version { chain_name: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z", distributed
 
-Currently, tshark generates debug log to `/tmp/xyz.log`, it is used only for development and contains eg. informations about analysed packets:
+Currently, `tshark` generates debug log to `/tmp/xyz.log`, it is used only for development and contains eg. informations about analysed packets:
 
                 $ cat /tmp/xyz.log
                 ...
