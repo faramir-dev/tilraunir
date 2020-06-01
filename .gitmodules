@@ -1,3 +1,6 @@
 [submodule "ffmpeg/ffmpeg"]
 	path = ffmpeg/ffmpeg
 	url = https://git.ffmpeg.org/ffmpeg.git
+[submodule "Rust/tokio-aio-examples"]
+	path = Rust/tokio-aio-examples
+	url = https://github.com/simmons/tokio-aio-examples.git

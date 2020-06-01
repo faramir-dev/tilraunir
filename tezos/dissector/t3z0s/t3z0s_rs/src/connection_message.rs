@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO: DRF: Move ConnectionMessage from tezedge-debugger to some library or turn tezedge-debugger to a mod?
 
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::{

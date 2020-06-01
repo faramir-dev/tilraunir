@@ -12,7 +12,6 @@ impl fmt::Display for NotT3z0sStreamError {
 
 impl error::Error for NotT3z0sStreamError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        // Generic error, underlying cause isn't tracked.
         None
     }
 }

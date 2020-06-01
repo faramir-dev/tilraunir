@@ -19,6 +19,7 @@
 struct T3zosDissectorInfo {
     int hf_payload_len;
     int hf_packet_counter;
+    int hf_msg;
     int hf_phrase;
     int hf_word;
 };
@@ -30,6 +31,7 @@ extern int t3z03s_free_conv_data(void*);
 static dissector_handle_t t3z0s_handle;
 static int proto_t3z0s = -1;
 static struct T3zosDissectorInfo info = {
+    -1,
     -1,
     -1,
     -1,
@@ -105,6 +107,11 @@ proto_register_t3z0s(void)
         { &info.hf_payload_len,
             { "T3z0s Payload Length", "t3z0s.payload_len",
             FT_INT64, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }
+        },
+        { &info.hf_msg,
+            { "T3z0s Msg", "t3z0s.msg",
+            FT_STRING, BASE_NONE,
             NULL, 0x0, NULL, HFILL }
         },
         { &info.hf_phrase,
