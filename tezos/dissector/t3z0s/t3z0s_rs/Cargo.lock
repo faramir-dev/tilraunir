@@ -1621,12 +1621,15 @@ dependencies = [
 name = "t3z0s_rs"
 version = "0.1.0"
 dependencies = [
+ "bytes 0.5.4",
  "crypto",
  "failure",
  "hex",
+ "lazy_static 1.4.0",
  "libc",
  "networking",
  "serde 1.0.110",
+ "serde_json",
  "storage",
  "tezos_encoding",
  "tezos_messages",

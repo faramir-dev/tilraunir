@@ -26,6 +26,8 @@ struct T3zosDissectorInfo {
 
 extern int t3z03s_dissect_packet(struct T3zosDissectorInfo*, tvbuff_t*, proto_tree*, const packet_info*, const struct tcp_analysis*);
 extern int t3z03s_free_conv_data(void*);
+extern void t3z0s_preferences_update(const char* identity_json_filepath);
+
 /* End of section shared with Rust */
 
 static dissector_handle_t t3z0s_handle;
@@ -52,6 +54,21 @@ static gboolean wmem_cb(wmem_allocator_t* allocator, wmem_cb_event_t ev, void *d
     }
 
     return TRUE;
+}
+
+static const char* identity_json_filepath;
+static void preferences_update_cb(void)
+{
+    t3z0s_preferences_update(identity_json_filepath);
+}
+
+static void register_user_preferences(void)
+{
+    module_t *tcp_module = prefs_register_protocol(proto_t3z0s, preferences_update_cb);
+    prefs_register_filename_preference(tcp_module, "identity_json_file",
+        "Identity JSON file",
+        "JSON file with node identity information",
+        &identity_json_filepath, FALSE);
 }
 
 /** An old style dissector proxy.
@@ -138,6 +155,8 @@ proto_register_t3z0s(void)
 
     proto_register_field_array(proto_t3z0s, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    register_user_preferences();
 }
 
 void

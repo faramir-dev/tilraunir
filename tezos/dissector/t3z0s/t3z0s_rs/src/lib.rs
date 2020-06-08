@@ -19,13 +19,22 @@ use crypto::{
     nonce::{NoncePair, generate_nonces},
 };
 use tezos_messages::p2p::{
-    binary_message::BinaryChunk,
+    binary_message::{
+        BinaryChunk,
+        cache::CachedData,
+    }
 };
 use std::fmt;
 
 // TODO: DRF: Move ConnectionMessage from tezedge-debugger to some library or turn tezedge-debugger to a mod?
-mod connection_message;
-use connection_message::ConnectionMessage;
+//mod connection_message;
+//use connection_message::ConnectionMessage;
+mod network;
+use network::{
+    connection_message::ConnectionMessage,
+    msg_decoder::{EncryptedMessage, EncryptedMessageDecoder},
+    raw_packet_msg::{RawPacketMessage, RawMessageDirection},
+};
 
 mod logger;
 use logger::msg;
@@ -34,7 +43,10 @@ mod wireshark;
 use wireshark::packet::packet_info;
 
 mod error;
-use error::NotT3z0sStreamError;
+use error::{NotT3z0sStreamError, T3z0sNodeIdentityNotLoadedError};
+
+mod configuration;
+use configuration::{get_configuration, Config};
 
 // Opaque structs from Wireshark
 #[repr(C)] pub struct tvbuff_t { _private: [u8; 0] }
@@ -90,42 +102,145 @@ pub struct T3zosDissectorInfo {
     hf_word: c_int
 }
 
-#[derive(Debug, Clone)]
 struct Conversation {
     counter: u64,
-    addr_local: SocketAddr,
-    addr_remote: SocketAddr,
-    conn_msg_local: Option<ConnectionMessage>,
-    conn_msg_remote: Option<ConnectionMessage>,
+    /* *** PeerProcessor from Tezedge-Debugger *** */
+    // addr: SocketAddr,
+    conn_msgs: Vec<(ConnectionMessage, SocketAddr)>,
+    is_initialized: bool,
+    is_incoming: bool,
+    is_dead: bool,
+    waiting: bool,
+    //handshake: u8,
+    peer_id: String,
+    public_key: Vec<u8>,
+    incoming_decrypter: Option<EncryptedMessageDecoder>,
+    outgoing_decrypter: Option<EncryptedMessageDecoder>,
 }
 impl Conversation {
     pub fn new() -> Self {
         Conversation {
             counter: 0,
-            addr_local: SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
-            addr_remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
-            conn_msg_local: None,
-            conn_msg_remote: None
+            /* PeerProcessor */
+            conn_msgs: Vec::with_capacity(2),
+            is_initialized: false,
+            is_incoming: false,
+            is_dead: false,
+            waiting: false,
+            peer_id: Default::default(),
+            public_key: Default::default(),
+            incoming_decrypter: None,
+            outgoing_decrypter: None,
         }
     }
 
-    fn is_ok(self: &Self) -> bool {
+    fn is_ok(&self) -> bool {
         match self.counter {
             0 => true,
-            1 => self.conn_msg_local.is_some(),
-            _ => self.conn_msg_local.is_some() && self.conn_msg_remote.is_some()
+            1 => self.conn_msgs.len() == 1,
+            _ => self.conn_msgs.len() == 2,
         }
     }
+
+    fn local_addr(&self) -> SocketAddr {
+        assert!(self.conn_msgs.len() == 2);
+
+        if self.is_incoming {
+            self.conn_msgs[1].1
+        } else {
+            self.conn_msgs[0].1
+        }
+    }
+
+    /*
+    fn remote_addr(&self) -> SocketAddr {
+        assert!(self.conn_msgs.len() == 2);
+
+        if self.is_incoming {
+            self.conn_msgs[0].1
+        } else {
+            self.conn_msgs[1].1
+        }
+    }
+
+    fn local_conn_msg(&self) -> &ConnectionMessage {
+        assert!(self.conn_msgs.len() == 2);
+
+        if self.is_incoming {
+            &self.conn_msgs[1].0
+        } else {
+            &self.conn_msgs[0].0
+        }
+    }
+
+    fn remote_conn_msg(&self) -> &ConnectionMessage {
+        assert!(self.conn_msgs.len() == 2);
+
+        if self.is_incoming {
+            &self.conn_msgs[0].0
+        } else {
+            &self.conn_msgs[1].0
+        }
+    }
+    */
 
     fn inc_counter(&mut self) -> u64 {
         self.counter += 1;
         self.counter
     }
 
-    pub fn process_unencrypted_msg(payload: Vec<u8>) -> Result<ConnectionMessage, failure::Error> {
+    pub fn process_connection_msg(payload: Vec<u8>) -> Result<ConnectionMessage, Error> {
         let chunk = BinaryChunk::try_from(payload)?;
         let conn_msg = ConnectionMessage::try_from(chunk)?;
         Ok(conn_msg)
+    }
+
+    fn upgrade(&mut self, configuration: &Config) -> Result<(), Error> {
+        let ((first, _), (second, _)) = (&self.conn_msgs[0], &self.conn_msgs[1]);
+        let first_pk = HashType::CryptoboxPublicKeyHash.bytes_to_string(&first.public_key);
+        let is_incoming = first_pk != configuration.identity.public_key;
+        let (received, sent) = if is_incoming {
+            (second, first)
+        } else {
+            (first, second)
+        };
+
+        let sent_data = BinaryChunk::from_content(&sent.cache_reader().get().unwrap())?;
+        let recv_data = BinaryChunk::from_content(&received.cache_reader().get().unwrap())?;
+
+        let NoncePair { remote, local } = generate_nonces(
+            &sent_data.raw(),
+            &recv_data.raw(),
+            !is_incoming,
+        );
+
+        let remote_pk = HashType::CryptoboxPublicKeyHash.bytes_to_string(&received.public_key);
+
+        let precomputed_key = precompute(
+            &hex::encode(&received.public_key),
+            &configuration.identity.secret_key,
+        )?;
+
+        self.incoming_decrypter = Some(EncryptedMessageDecoder::new(precomputed_key.clone(), remote, remote_pk.clone()));
+        self.outgoing_decrypter = Some(EncryptedMessageDecoder::new(precomputed_key, local, remote_pk.clone()));
+        self.public_key = received.public_key.clone();
+        self.peer_id = remote_pk;
+        self.is_incoming = is_incoming;
+        self.is_initialized = true;
+        Ok(())
+    }
+
+    fn process_encrypted_msg(&mut self, configuration: &Config, msg: &mut RawPacketMessage) -> Result<Option<EncryptedMessage>, Error> {
+        let decrypter = if msg.is_incoming() {
+            &mut self.incoming_decrypter
+        } else {
+            &mut self.outgoing_decrypter
+        };
+        if let Some(ref mut decrypter) = decrypter {
+            Ok(decrypter.recv_msg(msg))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn process_packet(
@@ -133,7 +248,7 @@ impl Conversation {
         info: &T3zosDissectorInfo, pinfo: &packet_info,
         tvb: *mut tvbuff_t, proto_tree: *mut proto_tree,
         tcpd: *const tcp_analysis
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), Error> {
 
         if !self.is_ok() { Err(NotT3z0sStreamError)?; }
 
@@ -142,18 +257,31 @@ impl Conversation {
             assert!(false);
         } else if counter <= 2 {
             let payload = get_data_safe(tvb);
-            let conn_msg = Conversation::process_unencrypted_msg(payload.to_vec())?;
+            let conn_msg = Conversation::process_connection_msg(payload.to_vec())?;
+            let ip_addr = IpAddr::try_from(pinfo.src)?;
+            let sock_addr = SocketAddr::new(ip_addr, pinfo.srcport as u16);
+            // FIXME: Can duplicate message happen? We use TCP stream, not raw packets stream.
+            self.conn_msgs.push((conn_msg, sock_addr));
+        } else {
+            let srcaddr = SocketAddr::new(IpAddr::try_from(pinfo.src)?, pinfo.srcport as u16);
+            let configuration = get_configuration().ok_or(T3z0sNodeIdentityNotLoadedError)?;
+            if self.is_initialized {
+                let direction = if self.local_addr() == srcaddr {
+                    RawMessageDirection::OUTGOING
+                } else {
+                    RawMessageDirection::INCOMING
+                };
 
-            // msg(format!("packet: count:{} src_addr:{:?} dst_addr:{:?} conn_msg_res: {:?}", self.counter, IpAddr::try_from(pinfo.src).unwrap(), IpAddr::try_from(pinfo.dst).unwrap(), conn_msg));
+                let mut raw = RawPacketMessage::new(
+                    direction, get_data_safe(tvb)
+                );
 
-            if counter == 1 {
-                let local_ip_addr = IpAddr::try_from(pinfo.src)?;
-                let remote_ip_addr = IpAddr::try_from(pinfo.dst)?;
-                self.addr_local = SocketAddr::new(local_ip_addr, pinfo.srcport as u16);
-                self.addr_remote = SocketAddr::new(remote_ip_addr, pinfo.destport as u16);
-                self.conn_msg_local = Some(conn_msg);
+                let msg_opt = self.process_encrypted_msg(&configuration, &mut raw)?;
+                if let Some(msg) = msg_opt {
+                    proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("msg: {} {}", direction, msg));
+                }
             } else {
-                self.conn_msg_remote = Some(conn_msg);
+                self.upgrade(&configuration)?;
             }
         }
         msg(format!("Conversation: {}", self));
@@ -164,7 +292,7 @@ impl Conversation {
 }
 impl fmt::Display for Conversation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "counter:{}; addr_local:{}; addr_remote:{}; conn_msg_local:{:?}; conn_msg_remote:{:?}", self.counter, self.addr_local, self.addr_remote, self.conn_msg_local, self.conn_msg_remote)
+        write!(f, "counter:{}; is_incoming:{}; conn_msgs:{:?};", self.counter, self.is_incoming, self.conn_msgs)
     }
 }
 
@@ -260,39 +388,6 @@ fn proto_tree_add_string_safe(
     }
 }
 
-/*
-fn add_word(info: &T3zosDissectorInfo, tvb: *mut tvbuff_t, proto_tree: *mut proto_tree, wbeg: c_int, wend: c_int) {
-    let wlen = wend - wbeg;
-    if wlen > 0 {
-        proto_tree_add_item_safe(
-            proto_tree,
-            info.hf_word,
-            tvb,
-            wbeg,
-            wlen,
-            0x00000002, /* Encoding from proto.h */
-        );
-    }
-}
-
-fn is_space(ch: char) -> bool {
-    ch == ' ' || ch == '\t' || ch == '\n'
-}
-
-fn add_words(info: &T3zosDissectorInfo, tvb: *mut tvbuff_t, proto_tree: *mut proto_tree, len: c_int) {
-    let mut prev_space: c_int = -1;
-    for i in 0..len {
-        let uch = tvb_get_guint8_safe(tvb, i);
-        let ch = uch as char;
-        if is_space(ch) {
-            add_word(info, tvb, proto_tree, prev_space + 1, i);
-            prev_space = i;
-        }
-    }
-    add_word(info, tvb, proto_tree, prev_space + 1, len);
-}
-*/
-
 static mut conversations_map: Option<HashMap<*const tcp_analysis, Conversation>> = None;
 
 fn get_conv_map() -> &'static mut HashMap<*const tcp_analysis, Conversation> {
@@ -317,22 +412,6 @@ pub extern "C" fn t3z03s_dissect_packet(
     let len = ulen as c_int;
 
     let conv = get_conv_map().entry(tcpd).or_insert_with(|| Conversation::new());
-
-    /*
-    proto_tree_add_int64_safe(proto_tree, info.hf_payload_len, tvb, 0, 0, len as i64);
-    proto_tree_add_int64_safe(proto_tree, info.hf_packet_counter, tvb, 0, 0, conv.counter as i64);
-
-    proto_tree_add_item_safe(
-        proto_tree,
-        info.hf_phrase,
-        tvb,
-        0,
-        -1,
-        0x00000002, /* Encoding from proto.h */
-    );
-
-    add_words(info, tvb, proto_tree, len);
-    */
 
     if let Err(e) = conv.process_packet(info, pinfo, tvb, proto_tree, tcpd) {
         msg(format!("E: Cannot process packet: {}", e));
