@@ -43,7 +43,7 @@ mod wireshark;
 use wireshark::packet::packet_info;
 
 mod error;
-use error::{NotT3z0sStreamError, T3z0sNodeIdentityNotLoadedError};
+use error::{NotT3z0sStreamError, T3z0sNodeIdentityNotLoadedError, UnknownDecrypterError, PeerNotUpgradedError};
 
 mod configuration;
 use configuration::{get_configuration, Config};
@@ -60,6 +60,7 @@ extern "C" {
     fn tvb_get_guint8(tvb: *mut tvbuff_t, offset: c_int /* gint */) -> u8;
     fn tvb_get_ptr(tvb: *mut tvbuff_t, offset: c_int /* gint */, length: c_int /* gint */) -> *mut u8;
     fn tvb_captured_length(tvb: *mut tvbuff_t) -> c_uint /* guint */;
+    fn tvb_captured_length_remaining(tvb: *mut tvbuff_t) -> c_uint /* guint */;
     fn wmem_packet_scope() -> *mut wmem_allocator_t;
     fn proto_tree_add_int64(
         proto_tree: *mut proto_tree,
@@ -102,6 +103,7 @@ pub struct T3zosDissectorInfo {
     hf_word: c_int
 }
 
+// Data stored for every T3z0s stream
 struct Conversation {
     counter: u64,
     /* *** PeerProcessor from Tezedge-Debugger *** */
@@ -198,28 +200,45 @@ impl Conversation {
     fn upgrade(&mut self, configuration: &Config) -> Result<(), Error> {
         let ((first, _), (second, _)) = (&self.conn_msgs[0], &self.conn_msgs[1]);
         let first_pk = HashType::CryptoboxPublicKeyHash.bytes_to_string(&first.public_key);
+        // FIXME: DRF: Use the same deserialization as in debugger.
+        msg(format!("keys: first:{}; {:?}; second:{}; {:?}; configuration:{}; {}; secret-key:{}",
+            HashType::CryptoboxPublicKeyHash.bytes_to_string(&first.public_key),
+            first.public_key,
+            HashType::CryptoboxPublicKeyHash.bytes_to_string(&second.public_key),
+            second.public_key,
+            HashType::CryptoboxPublicKeyHash.bytes_to_string(configuration.identity.public_key.as_bytes()),
+            configuration.identity.public_key,
+            configuration.identity.secret_key));
         let is_incoming = first_pk != configuration.identity.public_key;
+        msg(format!("upgrade pks cmp: {} != {}", first_pk, configuration.identity.public_key));
+        // FIXME: Kyras: Otocil jsem to, zda se mi, ze takto je spravne, v Debugerru je to naopak.
         let (received, sent) = if is_incoming {
-            (second, first)
-        } else {
             (first, second)
+        } else {
+            (second, first)
         };
 
         let sent_data = BinaryChunk::from_content(&sent.cache_reader().get().unwrap())?;
         let recv_data = BinaryChunk::from_content(&received.cache_reader().get().unwrap())?;
+        msg(format!("sent_data:{:?}; recv_data:{:?}", sent_data.raw(), recv_data.raw()));
 
         let NoncePair { remote, local } = generate_nonces(
             &sent_data.raw(),
             &recv_data.raw(),
-            !is_incoming,
+            is_incoming,
         );
+        msg(format!("noncences: {:?};{:?}", remote, local));
 
         let remote_pk = HashType::CryptoboxPublicKeyHash.bytes_to_string(&received.public_key);
+        msg(format!("remote_pk:{:?}", remote_pk));
 
         let precomputed_key = precompute(
             &hex::encode(&received.public_key),
             &configuration.identity.secret_key,
         )?;
+        msg(format!("precomputed-key: received.public_key:{:?}; configuration.identity.secret_key:{:?}",
+            &hex::encode(&received.public_key),
+            &configuration.identity.secret_key));
 
         self.incoming_decrypter = Some(EncryptedMessageDecoder::new(precomputed_key.clone(), remote, remote_pk.clone()));
         self.outgoing_decrypter = Some(EncryptedMessageDecoder::new(precomputed_key, local, remote_pk.clone()));
@@ -230,16 +249,17 @@ impl Conversation {
         Ok(())
     }
 
-    fn process_encrypted_msg(&mut self, configuration: &Config, msg: &mut RawPacketMessage) -> Result<Option<EncryptedMessage>, Error> {
+    fn process_encrypted_msg(&mut self, msg: &mut RawPacketMessage) -> Result<Option<EncryptedMessage>, Error> {
         let decrypter = if msg.is_incoming() {
             &mut self.incoming_decrypter
         } else {
             &mut self.outgoing_decrypter
         };
+
         if let Some(ref mut decrypter) = decrypter {
             Ok(decrypter.recv_msg(msg))
         } else {
-            Ok(None)
+            Err(UnknownDecrypterError)?
         }
     }
 
@@ -248,51 +268,66 @@ impl Conversation {
         info: &T3zosDissectorInfo, pinfo: &packet_info,
         tvb: *mut tvbuff_t, proto_tree: *mut proto_tree,
         tcpd: *const tcp_analysis
-    ) -> Result<(), Error> {
+    ) -> Result<usize, Error> {
 
         if !self.is_ok() { Err(NotT3z0sStreamError)?; }
 
         let counter = self.inc_counter();
+        let mut decrypted_msg = None;
+        let mut dbg_direction = None;
+        let mut dbg_srcaddr = None;
+        let mut dbg_dstaddr = None;
+        let payload = get_data_safe(tvb);
         if counter < 1 {
             assert!(false);
         } else if counter <= 2 {
-            let payload = get_data_safe(tvb);
             let conn_msg = Conversation::process_connection_msg(payload.to_vec())?;
             let ip_addr = IpAddr::try_from(pinfo.src)?;
             let sock_addr = SocketAddr::new(ip_addr, pinfo.srcport as u16);
             // FIXME: Can duplicate message happen? We use TCP stream, not raw packets stream.
             self.conn_msgs.push((conn_msg, sock_addr));
+            if self.conn_msgs.len() == 2 {
+                let configuration = get_configuration().ok_or(T3z0sNodeIdentityNotLoadedError)?;
+                self.upgrade(&configuration)?;
+                msg(format!("Upgraded peer! {}", self))
+            }
         } else {
             let srcaddr = SocketAddr::new(IpAddr::try_from(pinfo.src)?, pinfo.srcport as u16);
-            let configuration = get_configuration().ok_or(T3z0sNodeIdentityNotLoadedError)?;
+            dbg_srcaddr = Some(srcaddr);
+            dbg_dstaddr = Some(SocketAddr::new(IpAddr::try_from(pinfo.dst)?, pinfo.destport as u16));
             if self.is_initialized {
+                msg(format!("local-addr:{}", self.local_addr()));
                 let direction = if self.local_addr() == srcaddr {
                     RawMessageDirection::OUTGOING
                 } else {
                     RawMessageDirection::INCOMING
                 };
+                dbg_direction = Some(direction);
 
                 let mut raw = RawPacketMessage::new(
-                    direction, get_data_safe(tvb)
+                    direction, payload
                 );
 
-                let msg_opt = self.process_encrypted_msg(&configuration, &mut raw)?;
-                if let Some(msg) = msg_opt {
-                    proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("msg: {} {}", direction, msg));
-                }
+                decrypted_msg = self.process_encrypted_msg(&mut raw)?;
             } else {
-                self.upgrade(&configuration)?;
+                Err(PeerNotUpgradedError)?;
             }
         }
-        msg(format!("Conversation: {}", self));
-        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("{}", self));
+        msg(format!("Conversation: {}; direction:{:?}; src-addr:{:?}; dst-addr:{:?}; decrypted-msg:{:?};", self, dbg_direction, dbg_srcaddr, dbg_dstaddr, decrypted_msg));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("payload: {}; {:?};", payload.len(), payload));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("counter: {};", counter));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("direction:{:?};", dbg_direction));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("src-addr:{:?};", dbg_srcaddr));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("dst-addr:{:?};", dbg_dstaddr));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("decrypted-msg:{:?};", decrypted_msg));
+        proto_tree_add_string_safe(proto_tree, info.hf_msg, tvb, 0, 0, format!("self:{};", self));
 
-        Ok(())
+        Ok(payload.len())
     }
 }
 impl fmt::Display for Conversation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "counter:{}; is_incoming:{}; conn_msgs:{:?};", self.counter, self.is_incoming, self.conn_msgs)
+        write!(f, "counter:{}; is_initialised:{}; is_incoming:{}; is_dead:{}; conn_msgs:{:?};", self.counter, self.is_initialized, self.is_incoming, self.is_dead,  self.conn_msgs)
     }
 }
 
@@ -306,13 +341,14 @@ fn get_packet_info_safe<'a>(p_pinfo: *const packet_info) -> &'a packet_info {
 }
 
 fn get_data_safe<'a>(tvb: *mut tvbuff_t) -> &'a [u8] {
-    let ulen = tvb_captured_length_safe(tvb);
     unsafe {
+        let ptr = tvb_get_ptr(tvb, 0, -1);
+        let ulen = tvb_captured_length_remaining(tvb);
         // According to Wireshark documentation:
         //   https://www.wireshark.org/docs/wsar_html/group__tvbuff.html#ga31ba5c32b147f1f1e57dc8326e6fdc21
         // `get_raw_ptr()` should not be used, but it looks as easiest solution here.
         std::slice::from_raw_parts(
-            tvb_get_ptr(tvb, 0, ulen as c_int),
+            ptr,
             ulen as usize)
     }
 }
@@ -323,6 +359,10 @@ fn tvb_get_guint8_safe(tvb: *mut tvbuff_t, offset: c_int /* gint */) -> u8 {
 
 fn tvb_captured_length_safe(tvb: *mut tvbuff_t) -> c_uint {
     unsafe { tvb_captured_length(tvb) }
+}
+
+fn tvb_captured_length_remaining_safe(tvb: *mut tvbuff_t) -> c_uint {
+    unsafe { tvb_captured_length_remaining(tvb) }
 }
 
 fn proto_tree_add_int64_safe(
@@ -408,16 +448,15 @@ pub extern "C" fn t3z03s_dissect_packet(
     let info = get_info_safe(p_info);
     let pinfo = get_packet_info_safe(p_pinfo);
 
-    let ulen = tvb_captured_length_safe(tvb);
-    let len = ulen as c_int;
-
     let conv = get_conv_map().entry(tcpd).or_insert_with(|| Conversation::new());
 
-    if let Err(e) = conv.process_packet(info, pinfo, tvb, proto_tree, tcpd) {
-        msg(format!("E: Cannot process packet: {}", e));
+    match conv.process_packet(info, pinfo, tvb, proto_tree, tcpd) {
+        Err(e) => {
+            msg(format!("E: Cannot process packet: {}", e));
+            0 as c_int
+        },
+        Ok(size) => size as c_int
     }
-
-    len
 }
 
 #[cfg(test)]

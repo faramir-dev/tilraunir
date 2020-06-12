@@ -18,6 +18,8 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use super::raw_packet_msg::RawPacketMessage;
 use std::fmt;
 
+use crate::logger;
+
 /// P2P Message decrypter from captured connection messages
 pub struct EncryptedMessageDecoder {
     //db: MessageStore,
@@ -42,9 +44,14 @@ pub enum EncryptedMessage {
 impl fmt::Display for EncryptedMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            EncryptedMessage::Metadata(_) => write!(f, "metadata"),
-            EncryptedMessage::PeerResponse(_) => write!(f, "peerresponse"),
+            EncryptedMessage::Metadata(ref m) => write!(f, "metadata:{:?}", m),
+            EncryptedMessage::PeerResponse(ref p2p) => write!(f, "peerresponse:{:?}", p2p),
         }
+    }
+}
+impl fmt::Debug for EncryptedMessage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -66,6 +73,8 @@ impl EncryptedMessageDecoder {
 
     /// Process received message, if complete message is received, decypher, deserialize and store it.
     pub fn recv_msg(&mut self, enc: &RawPacketMessage) -> Option<EncryptedMessage> {
+        logger::msg(format!("recv_msg: raw-len:{}; inc_buf-len:{}; out_buf-len:{}; dec_buf-len:{}", enc.payload().len(),
+            self.inc_buf.len(), self.out_buf.len(), self.dec_buf.len()));
         if enc.has_payload() {
             self.inc_buf.extend_from_slice(&enc.payload());
 
@@ -83,11 +92,12 @@ impl EncryptedMessageDecoder {
     /// IFF all packets from message are received and all correct keys are used to decrypt
     fn try_decrypt(&mut self) -> Option<EncryptedMessage> {
         let len = (&self.inc_buf[0..2]).get_u16() as usize;
+        logger::msg(format!("try_decrypt: len: {}", len));
         if self.inc_buf[2..].len() >= len {
             let chunk = match BinaryChunk::try_from(self.inc_buf[0..len + 2].to_vec()) {
                 Ok(chunk) => chunk,
                 Err(e) => {
-                    //log::error!("Failed to load binary chunk: {}", e);
+                    logger::msg(format!("Failed to load binary chunk: {}", e));
                     return None;
                 }
             };
@@ -97,7 +107,8 @@ impl EncryptedMessageDecoder {
                 Ok(msg) => {
                     self.try_deserialize(msg)
                 }
-                Err(_err) => {
+                Err(e) => {
+                    logger::msg(format!("Failed to decrypt: {}", e));
                     None
                 }
             }
@@ -142,7 +153,7 @@ impl EncryptedMessageDecoder {
                         self.dec_buf.drain(self.dec_buf.len() - bytes..);
                     }
                     Err(e) => {
-                        //log::warn!("Failed to deserialize message: {}", e);
+                        logger::msg(format!("Failed to deserialize message: {}", e));
                         return None;
                     }
                 }
@@ -179,7 +190,7 @@ impl EncryptedMessageDecoder {
                         self.dec_buf.drain(self.dec_buf.len() - bytes..);
                     }
                     Err(e) => {
-                        //log::warn!("Failed to deserialize message: {}", e);
+                        logger::msg(format!("Failed to deserialize p2p message: {}", e));
                         return None;
                     }
                 }

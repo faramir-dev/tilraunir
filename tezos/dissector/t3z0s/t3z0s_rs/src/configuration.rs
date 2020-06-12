@@ -7,6 +7,9 @@ use std::ffi::OsString;
 use std::sync::RwLock;
 use std::option::Option;
 use failure::Error;
+use crypto::hash::HashType;
+
+use hex;
 
 use crate::logger::msg;
 
@@ -44,8 +47,15 @@ lazy_static! {
 // https://stackoverflow.com/questions/24145823/how-do-i-convert-a-c-string-into-a-rust-string-and-back-via-ffi
 
 pub fn load_identity(filepath: &str) -> Result<Identity, Error> {
+    msg(format!("load_identity:{}", filepath));
     let content = fs::read_to_string(filepath)?;
-    Ok(serde_json::from_str(&content)?)
+    let mut identity: Identity = serde_json::from_str(&content)?;
+    msg(format!("msg-identity:original{:?}", identity.public_key));
+    let decoded = hex::decode(&identity.public_key)?;
+    msg(format!("msg-identity:decoded{:?}", decoded));
+    identity.public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(&decoded);
+    msg(format!("msg-identity:{}", identity.public_key));
+    Ok(identity)
 }
 
 fn load_preferences(identity_json_filepath: *const c_char) -> Result<Config, Error> {
@@ -74,6 +84,7 @@ pub extern "C" fn t3z0s_preferences_update(identity_json_filepath: *const c_char
 }
 
 pub(crate) fn get_configuration() -> Option<Config> {
+    msg(format!("get_configuration"));
     let cfg = config_rwlock.read().unwrap();
     // TODO: Unecessary clone, maybe use shared-ptr?
     cfg.clone()
