@@ -1,3 +1,4 @@
+use crate::{MAX, ZERO};
 use num_rational::Rational64;
 use std::assert;
 use std::vec::Vec;
@@ -20,27 +21,21 @@ type LocalMaximas = Vec<LocalMaximum>;
 type LocalMinimas = Vec<LocalMinimum>;
 
 fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
-    assert!(landscape.len() >= 3);
-
     let mut local_maximas: LocalMaximas = Vec::new();
     let mut local_minimas: LocalMinimas = Vec::new();
 
     let find_minimum = |from: usize| -> LocalMinimum {
-        assert!(from + 1 < landscape.len());
+        assert!(from + 2 < landscape.len());
 
-        let mut min_val = landscape[from];
         let mut begin = from;
         let mut end = from + 1;
-        loop {
-            let val = landscape[end];
-            if val < min_val {
+        while landscape[begin] >= landscape[end] {
+            if landscape[begin] > landscape[end] {
                 begin = end;
-                min_val = val;
-            } else if val > min_val {
-                break;
             }
-            end = end + 1;
+            end += 1;
         }
+        let min_val = landscape[begin];
         LocalMinimum {
             begin,
             width: end - begin,
@@ -48,26 +43,17 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
         }
     };
     let find_maximum = |from: usize| -> LocalMaximum {
-        assert!(from < landscape.len());
+        assert!(from + 1 < landscape.len());
 
-        let mut max_val = landscape[from];
         let mut begin = from;
         let mut end = from + 1;
-        loop {
-            assert!(end <= landscape.len());
-            if end >= landscape.len() {
-                break;
-            }
-            let val = landscape[end];
-            if val > max_val {
+        while landscape[begin] <= landscape[end] {
+            if landscape[begin] < landscape[end] {
                 begin = end;
-                max_val = val;
-            } else if val < max_val {
-                break;
             }
             end += 1;
         }
-        let water_speed = if end < landscape.len() {
+        let water_speed = if end < landscape.len() - 1 {
             (end - begin) as i64
         } else {
             0
@@ -86,7 +72,7 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
     });
 
     let mut from = 1;
-    while from < landscape.len() {
+    while from + 1 < landscape.len() {
         let minimum = find_minimum(from);
         from = minimum.begin + minimum.width;
         local_minimas.push(minimum);
@@ -101,11 +87,7 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
 #[test]
 fn test_find_extremes() {
     {
-        let landscape = vec![
-            Rational64::from_integer(5),
-            Rational64::from_integer(2),
-            Rational64::from_integer(5),
-        ];
+        let landscape = vec![MAX, Rational64::from_integer(2), MAX, ZERO];
         let (maximas, minimas) = find_extremes(&landscape);
         assert_eq!(
             &maximas[..],
@@ -127,21 +109,22 @@ fn test_find_extremes() {
             &[LocalMinimum {
                 begin: 1,
                 width: 1,
-                depth: Rational64::from_integer(3)
+                depth: MAX - 2
             }]
         );
     }
 
     {
         let landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         let (maximas, minimas) = find_extremes(&landscape);
         assert_eq!(
@@ -183,7 +166,7 @@ fn test_find_extremes() {
 
     {
         let landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
@@ -192,7 +175,8 @@ fn test_find_extremes() {
             Rational64::from_integer(2),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         let (maximas, minimas) = find_extremes(&landscape);
         assert_eq!(
@@ -247,12 +231,13 @@ fn find_water_speeds(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rati
 }
 
 pub(crate) fn calculate(total_time: Rational64, landscape: &mut Vec<Rational64>) {
-    assert!(landscape.len() >= 3);
-    assert!(landscape[0] == crate::MAX);
-    assert!(landscape[landscape.len() - 1] == crate::MAX);
+    assert!(landscape.len() >= 4);
+    assert!(landscape[0] == MAX);
+    assert!(landscape[landscape.len() - 2] == MAX);
+    assert!(landscape[landscape.len() - 1] == ZERO);
 
     let mut remaining_time = total_time;
-    while remaining_time > Rational64::from_integer(0) {
+    while remaining_time > ZERO {
         let (maximas, minimas) = find_extremes(landscape);
         let speeds = find_water_speeds(&maximas, &minimas);
         let min_time = speeds
@@ -279,280 +264,294 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut Vec<Rational64>)
 #[test]
 fn test_calculate() {
     {
-        let mut landscape = vec![
-            crate::MAX,
-            Rational64::from_integer(1),
-            crate::MAX,
-        ];
+        let mut landscape = vec![MAX, Rational64::from_integer(1), MAX, ZERO];
         calculate(Rational64::from_integer(10), &mut landscape);
         assert_eq!(
             &landscape[..],
-            &[
-                crate::MAX,
-                Rational64::from_integer(11),
-                crate::MAX,
-            ]
+            &[MAX, Rational64::from_integer(11), MAX, ZERO,]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(5),
             Rational64::from_integer(5),
             Rational64::from_integer(5),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::from_integer(11), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(16),
                 Rational64::from_integer(16),
                 Rational64::from_integer(16),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(1),
             Rational64::from_integer(5),
             Rational64::from_integer(5),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::from_integer(1), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(4),
                 Rational64::from_integer(5),
                 Rational64::from_integer(5),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(1),
             Rational64::from_integer(5),
             Rational64::from_integer(5),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::from_integer(2), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::new(17, 3),
                 Rational64::new(17, 3),
                 Rational64::new(17, 3),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(1),
             Rational64::from_integer(9),
             Rational64::from_integer(1),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::from_integer(1), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::new(5, 2),
                 Rational64::from_integer(9),
                 Rational64::new(5, 2),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(1, 2), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(3),
                 Rational64::new(9, 4),
                 Rational64::from_integer(6),
                 Rational64::new(23, 4),
                 Rational64::from_integer(8),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(4, 7), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(3),
                 Rational64::new(17, 7),
                 Rational64::from_integer(6),
                 Rational64::from_integer(6),
                 Rational64::from_integer(8),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(2, 3), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(3),
                 Rational64::from_integer(3),
                 Rational64::from_integer(6),
                 Rational64::from_integer(6),
                 Rational64::from_integer(8),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(5, 3), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(6),
                 Rational64::from_integer(6),
                 Rational64::from_integer(6),
                 Rational64::from_integer(6),
                 Rational64::from_integer(8),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::from_integer(3), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(8),
                 Rational64::from_integer(8),
                 Rational64::from_integer(8),
                 Rational64::from_integer(8),
                 Rational64::from_integer(8),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(23, 6), &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(9),
                 Rational64::from_integer(9),
                 Rational64::from_integer(9),
                 Rational64::from_integer(9),
                 Rational64::from_integer(9),
                 Rational64::from_integer(9),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }
     {
         let mut landscape = vec![
-            crate::MAX,
+            MAX,
             Rational64::from_integer(3),
             Rational64::from_integer(1),
             Rational64::from_integer(6),
             Rational64::from_integer(4),
             Rational64::from_integer(8),
             Rational64::from_integer(9),
-            crate::MAX,
+            MAX,
+            ZERO,
         ];
         calculate(Rational64::new(23, 6) + 11, &mut landscape);
         assert_eq!(
             &landscape[..],
             &[
-                crate::MAX,
+                MAX,
                 Rational64::from_integer(20),
                 Rational64::from_integer(20),
                 Rational64::from_integer(20),
                 Rational64::from_integer(20),
                 Rational64::from_integer(20),
                 Rational64::from_integer(20),
-                crate::MAX,
+                MAX,
+                ZERO,
             ]
         );
     }

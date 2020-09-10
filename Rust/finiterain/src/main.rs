@@ -8,6 +8,7 @@ use num_rational::Rational64;
 use std::vec::Vec;
 
 const MAX: Rational64 = Rational64::new_raw(std::u32::MAX as i64 * 2, 1);
+const ZERO: Rational64 = Rational64::new_raw(0, 1);
 
 fn main() {
     let maybe_err = || -> anyhow::Result<()> {
@@ -29,13 +30,15 @@ fn main() {
                 .map(|x| Rational64::from_integer(*x))
                 .collect::<Vec<Rational64>>(),
         );
+        // Add one local maximum to the end of the landscape to simplify iterations.
         landscape.push(MAX);
+        landscape.push(ZERO);
 
         let time = Rational64::from_integer(cfg.rain_amount);
         slow::calculate(time, &mut landscape);
         println!(
             "> Result: : {};",
-            landscape[2..landscape.len() - 1]
+            landscape[2..landscape.len() - 2]
                 .iter()
                 .fold(landscape[1].to_string(), |acc, &num| acc
                     + ", "
