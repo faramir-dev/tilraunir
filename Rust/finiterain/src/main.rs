@@ -14,8 +14,8 @@ fn main() {
     let maybe_err = || -> anyhow::Result<()> {
         let cfg = config::load()?;
         println!(
-            "> rain_amount: {}; landscape: {};",
-            cfg.rain_amount,
+            "> total_time: {}; landscape: {};",
+            cfg.total_time,
             cfg.landscape[1..]
                 .iter()
                 .fold(cfg.landscape[0].to_string(), |acc, &num| acc
@@ -34,7 +34,7 @@ fn main() {
         landscape.push(MAX);
         landscape.push(ZERO);
 
-        let time = Rational64::from_integer(cfg.rain_amount);
+        let time = Rational64::from_integer(cfg.total_time);
         slow::calculate(time, &mut landscape);
         println!(
             "> Result: : {};",

@@ -15,12 +15,12 @@ pub(crate) enum Error {
 }
 
 pub(crate) struct Config {
-    pub(crate) rain_amount: i64,
+    pub(crate) total_time: i64,
     pub(crate) landscape: Vec<i64>,
 }
 
 pub(crate) fn load() -> anyhow::Result<Config> {
-    let rain_amount = env::args()
+    let total_time = env::args()
         .nth(1)
         .ok_or(Error::ArgsTooShort)
         .and_then(|s| {
@@ -41,7 +41,7 @@ pub(crate) fn load() -> anyhow::Result<Config> {
         Err(Error::ArgsTooShort)?;
     }
     Ok(Config {
-        rain_amount,
+        total_time,
         landscape,
     })
 }
