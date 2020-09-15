@@ -4,9 +4,11 @@ mod config;
 mod slow;
 
 use anyhow;
+use config::Config;
 use num_rational::Rational64;
 use std::fmt;
 use std::vec::Vec;
+use structopt::StructOpt;
 
 const MAX: Rational64 = Rational64::new_raw(std::u32::MAX as i64 * 2, 1);
 const ZERO: Rational64 = Rational64::new_raw(0, 1);
@@ -26,11 +28,11 @@ impl<T: fmt::Display> fmt::Display for Fmt<'_, T> {
 
 fn main() {
     let maybe_err = || -> anyhow::Result<()> {
-        let cfg = config::load()?;
+        let cfg = Config::from_args();
         println!(
             "> total_time: {}; landscape: {};",
             cfg.total_time,
-            Fmt(&cfg.landscape[1..])
+            Fmt(&cfg.landscape[..])
         );
 
         let mut landscape = vec![MAX];

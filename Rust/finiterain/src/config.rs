@@ -1,47 +1,21 @@
-use anyhow;
-use std::env;
+use std::num::ParseIntError;
 use std::result::Result;
 use std::vec::Vec;
-use thiserror::Error;
+use structopt::StructOpt;
 
-#[derive(Error, Clone, Debug)]
-pub(crate) enum Error {
-    #[error("Expected amount of rain and at least one landscape segment")]
-    ArgsTooShort,
-    #[error("Cannot parse amount of rain, expected non-negative integer, found: {found:?}")]
-    InvalidAmountOfRain { found: String },
-    #[error("Cannot parse landscape segment, expected non-negative integer, found: {found:?}")]
-    InvalidSegment { found: String },
+fn parse_i64_as_u32(s: &str) -> Result<i64, ParseIntError> {
+    let num = s.parse::<u32>()?;
+    Ok(num as i64)
 }
 
+#[derive(Debug, Clone, StructOpt)]
+#[structopt(
+    name = "finiterain",
+    about = "Calculate water levels after rain falls uniformly on a landscape."
+)]
 pub(crate) struct Config {
+    #[structopt(parse(try_from_str = parse_i64_as_u32))]
     pub(crate) total_time: i64,
+    #[structopt(required = true, parse(try_from_str = parse_i64_as_u32))]
     pub(crate) landscape: Vec<i64>,
-}
-
-pub(crate) fn load() -> anyhow::Result<Config> {
-    let total_time = env::args()
-        .nth(1)
-        .ok_or(Error::ArgsTooShort)
-        .and_then(|s| {
-            s.parse::<i64>()
-                .ok()
-                .and_then(|x| if x > 0 { Some(x) } else { None })
-                .ok_or(Error::InvalidAmountOfRain { found: s })
-        })?;
-    let landscape = env::args()
-        .skip(2)
-        .map(|s| {
-            s.parse::<u32>()
-                .map_err(|_| Error::InvalidSegment { found: s })
-                .map(|x| x as i64)
-        })
-        .collect::<Result<Vec<i64>, _>>()?;
-    if landscape.is_empty() {
-        Err(Error::ArgsTooShort)?;
-    }
-    Ok(Config {
-        total_time,
-        landscape,
-    })
 }
