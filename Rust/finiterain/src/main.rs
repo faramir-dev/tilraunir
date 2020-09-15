@@ -48,7 +48,7 @@ fn main() {
 
         let time = Rational64::from_integer(cfg.total_time);
         slow::calculate(time, &mut landscape);
-        println!("> Result: : {};", Fmt(&landscape[1..landscape.len() - 2]));
+        println!("> Result: {};", Fmt(&landscape[1..landscape.len() - 2]));
 
         Ok(())
     }();

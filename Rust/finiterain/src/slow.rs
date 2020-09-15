@@ -1,6 +1,7 @@
 use crate::{MAX, ZERO};
 use num_rational::Rational64;
 use std::assert;
+use std::cmp::min;
 use std::vec::Vec;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -14,18 +15,19 @@ struct LocalMinimum {
 struct LocalMaximum {
     begin: usize,
     width: usize,
-    water_speed: i64, // Maximas on the very right/very left have 0
+    water_speed: i64, // 0 for maximas on the very right/very left, `width` otherwise
 }
 
 type LocalMaximas = Vec<LocalMaximum>;
 type LocalMinimas = Vec<LocalMinimum>;
 
-fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
+fn find_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
+    let len = landscape.len();
     let mut local_maximas: LocalMaximas = Vec::new();
     let mut local_minimas: LocalMinimas = Vec::new();
 
     let find_minimum = |from: usize| -> LocalMinimum {
-        assert!(from + 2 < landscape.len());
+        assert!(from + 2 < len);
 
         let mut begin = from;
         let mut end = from + 1;
@@ -39,11 +41,11 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
         LocalMinimum {
             begin,
             width: end - begin,
-            depth: std::cmp::min(landscape[begin - 1] - min_val, landscape[end] - min_val),
+            depth: min(landscape[begin - 1], landscape[end]) - min_val,
         }
     };
     let find_maximum = |from: usize| -> LocalMaximum {
-        assert!(from + 1 < landscape.len());
+        assert!(from + 1 < len);
 
         let mut begin = from;
         let mut end = from + 1;
@@ -53,14 +55,11 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
             }
             end += 1;
         }
-        let water_speed = if end < landscape.len() - 1 {
-            (end - begin) as i64
-        } else {
-            0
-        };
+        let width = end - begin;
+        let water_speed = if end + 1 < len { width as i64 } else { 0 };
         LocalMaximum {
             begin,
-            width: end - begin,
+            width,
             water_speed,
         }
     };
@@ -72,7 +71,7 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
     });
 
     let mut from = 1;
-    while from + 1 < landscape.len() {
+    while from + 1 < len {
         let minimum = find_minimum(from);
         from = minimum.begin + minimum.width;
         local_minimas.push(minimum);
@@ -82,6 +81,51 @@ fn find_extremes(landscape: &Vec<Rational64>) -> (LocalMaximas, LocalMinimas) {
         local_maximas.push(maximum);
     }
     (local_maximas, local_minimas)
+}
+
+fn find_water_speeds(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rational64> {
+    (0..minimas.len())
+        .map(|i| {
+            let left = &maximas[i];
+            let right = &maximas[i + 1];
+            let left_end = left.begin + left.width;
+            Rational64::from_integer(left.water_speed) / 2
+                + Rational64::from_integer(right.water_speed) / 2
+                + (right.begin - left_end) as i64
+        })
+        .collect()
+}
+
+pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
+    let len = landscape.len();
+    assert!(len >= 4);
+    assert!(landscape[0] == MAX);
+    assert!(landscape[len - 2] == MAX);
+    assert!(landscape[len - 1] == ZERO);
+
+    let mut remaining_time = total_time;
+    while remaining_time > ZERO {
+        let (maximas, minimas) = find_extremes(landscape);
+        let speeds = find_water_speeds(&maximas, &minimas);
+        let min_time = speeds
+            .iter()
+            .zip(minimas.iter())
+            .map(|(speed, minima)| minima.depth * minima.width as i64 / speed)
+            .min()
+            .unwrap();
+        let step_time = std::cmp::min(min_time, remaining_time);
+
+        remaining_time -= step_time;
+        for idx in 0..minimas.len() {
+            let speed = speeds[idx];
+            let add = speed * step_time / minimas[idx].width as i64;
+            let b = minimas[idx].begin;
+            let e = b + minimas[idx].width;
+            for i in b..e {
+                landscape[i] += add;
+            }
+        }
+    }
 }
 
 #[test]
@@ -216,51 +260,6 @@ fn test_find_extremes() {
         );
     }
 }
-
-fn find_water_speeds(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rational64> {
-    (0..minimas.len())
-        .map(|i| {
-            let left = &maximas[i];
-            let right = &maximas[i + 1];
-            let left_end = left.begin + left.width;
-            Rational64::from_integer(left.water_speed) / 2
-                + Rational64::from_integer(right.water_speed) / 2
-                + (right.begin - left_end) as i64
-        })
-        .collect()
-}
-
-pub(crate) fn calculate(total_time: Rational64, landscape: &mut Vec<Rational64>) {
-    assert!(landscape.len() >= 4);
-    assert!(landscape[0] == MAX);
-    assert!(landscape[landscape.len() - 2] == MAX);
-    assert!(landscape[landscape.len() - 1] == ZERO);
-
-    let mut remaining_time = total_time;
-    while remaining_time > ZERO {
-        let (maximas, minimas) = find_extremes(landscape);
-        let speeds = find_water_speeds(&maximas, &minimas);
-        let min_time = speeds
-            .iter()
-            .zip(minimas.iter())
-            .map(|(speed, minima)| minima.depth * minima.width as i64 / speed)
-            .min()
-            .unwrap();
-        let step_time = std::cmp::min(min_time, remaining_time);
-
-        remaining_time -= step_time;
-        for idx in 0..minimas.len() {
-            let speed = speeds[idx];
-            let add = speed * step_time / minimas[idx].width as i64;
-            let b = minimas[idx].begin;
-            let e = b + minimas[idx].width;
-            for i in b..e {
-                landscape[i] += add;
-            }
-        }
-    }
-}
-
 #[test]
 fn test_calculate() {
     {

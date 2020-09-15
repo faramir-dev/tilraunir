@@ -32,6 +32,6 @@ You can run the app with `cargo`, first parameter is the number of hours rain is
 finiterain $ cargo run 2 1 5 5
     ...
 > rain_amount: 2; landscape: 1, 5, 5;
-> Result: : 17/3, 17/3, 17/3;
+> Result: 17/3, 17/3, 17/3;
 ```
 
