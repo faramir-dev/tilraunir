@@ -15,7 +15,7 @@ struct LocalMinimum {
 struct LocalMaximum {
     begin: usize,
     width: usize,
-    water_speed: i64, // 0 for maximas on the very right/very left, `width` otherwise
+    water_current: Rational64, // It is 0 for maximas on the very right/very left, width/2 otherwise
 }
 
 type LocalMaximas = Vec<LocalMaximum>;
@@ -56,18 +56,22 @@ fn find_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
             end += 1;
         }
         let width = end - begin;
-        let water_speed = if end + 1 < len { width as i64 } else { 0 };
+        let water_current = if end + 1 < len {
+            Rational64::from_integer(width as i64) / 2
+        } else {
+            ZERO
+        };
         LocalMaximum {
             begin,
             width,
-            water_speed,
+            water_current,
         }
     };
 
     local_maximas.push(LocalMaximum {
         begin: 0,
         width: 1,
-        water_speed: 0,
+        water_current: ZERO,
     });
 
     let mut from = 1;
@@ -83,15 +87,13 @@ fn find_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
     (local_maximas, local_minimas)
 }
 
-fn find_water_speeds(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rational64> {
+fn find_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rational64> {
     (0..minimas.len())
         .map(|i| {
             let left = &maximas[i];
             let right = &maximas[i + 1];
             let left_end = left.begin + left.width;
-            Rational64::from_integer(left.water_speed) / 2
-                + Rational64::from_integer(right.water_speed) / 2
-                + (right.begin - left_end) as i64
+            left.water_current + right.water_current + (right.begin - left_end) as i64
         })
         .collect()
 }
@@ -106,7 +108,7 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     let mut remaining_time = total_time;
     while remaining_time > ZERO {
         let (maximas, minimas) = find_extremes(landscape);
-        let speeds = find_water_speeds(&maximas, &minimas);
+        let speeds = find_water_currents(&maximas, &minimas);
         let min_time = speeds
             .iter()
             .zip(minimas.iter())
@@ -139,12 +141,12 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 2,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 }
             ]
         );
@@ -177,17 +179,17 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 3,
                     width: 1,
-                    water_speed: 1
+                    water_current: Rational64::from_integer(1) / 2
                 },
                 LocalMaximum {
                     begin: 7,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 }
             ]
         );
@@ -202,7 +204,7 @@ fn test_find_extremes() {
                 LocalMinimum {
                     begin: 4,
                     width: 1,
-                    depth: Rational64::from_integer(2)
+                    depth: Rational64::from_integer(2),
                 }
             ]
         );
@@ -229,17 +231,17 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 3,
                     width: 1,
-                    water_speed: 1
+                    water_current: Rational64::from_integer(1) / 2
                 },
                 LocalMaximum {
                     begin: 9,
                     width: 1,
-                    water_speed: 0
+                    water_current: ZERO
                 }
             ]
         );
