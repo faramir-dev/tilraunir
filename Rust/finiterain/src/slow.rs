@@ -108,19 +108,19 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     let mut remaining_time = total_time;
     while remaining_time > ZERO {
         let (maximas, minimas) = find_extremes(landscape);
-        let speeds = find_water_currents(&maximas, &minimas);
-        let min_time = speeds
+        let currents = find_water_currents(&maximas, &minimas);
+        let min_time = currents
             .iter()
             .zip(minimas.iter())
-            .map(|(speed, minima)| minima.depth * minima.width as i64 / speed)
+            .map(|(current, minima)| minima.depth * minima.width as i64 / current)
             .min()
             .unwrap();
         let step_time = std::cmp::min(min_time, remaining_time);
 
         remaining_time -= step_time;
         for idx in 0..minimas.len() {
-            let speed = speeds[idx];
-            let add = speed * step_time / minimas[idx].width as i64;
+            let current = currents[idx];
+            let add = current * step_time / minimas[idx].width as i64;
             let b = minimas[idx].begin;
             let e = b + minimas[idx].width;
             for i in b..e {
