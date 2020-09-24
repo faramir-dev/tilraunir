@@ -15,7 +15,6 @@ struct LocalMinimum {
 struct LocalMaximum {
     begin: usize,
     width: usize,
-    water_current: Rational64, // It is 0 for maximas on the very right/very left, width/2 otherwise
 }
 
 type LocalMaximas = Vec<LocalMaximum>;
@@ -56,22 +55,15 @@ fn find_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
             end += 1;
         }
         let width = end - begin;
-        let water_current = if end + 1 < len {
-            Rational64::from_integer(width as i64) / 2
-        } else {
-            ZERO
-        };
         LocalMaximum {
             begin,
             width,
-            water_current,
         }
     };
 
     local_maximas.push(LocalMaximum {
         begin: 0,
         width: 1,
-        water_current: ZERO,
     });
 
     let mut from = 1;
@@ -93,7 +85,9 @@ fn find_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Ra
             let left = &maximas[i];
             let right = &maximas[i + 1];
             let left_end = left.begin + left.width;
-            left.water_current + right.water_current + (right.begin - left_end) as i64
+            let left_current = if i > 0 { Rational64::from_integer(left.width as i64)/2 } else { ZERO };
+            let right_current = if i + 1 < minimas.len() { Rational64::from_integer(right.width as i64)/2 } else { ZERO };
+            left_current + right_current + (right.begin - left_end) as i64
         })
         .collect()
 }
@@ -141,12 +135,10 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 2,
                     width: 1,
-                    water_current: ZERO
                 }
             ]
         );
@@ -179,17 +171,14 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 3,
                     width: 1,
-                    water_current: Rational64::from_integer(1) / 2
                 },
                 LocalMaximum {
                     begin: 7,
                     width: 1,
-                    water_current: ZERO
                 }
             ]
         );
@@ -231,17 +220,14 @@ fn test_find_extremes() {
                 LocalMaximum {
                     begin: 0,
                     width: 1,
-                    water_current: ZERO
                 },
                 LocalMaximum {
                     begin: 3,
                     width: 1,
-                    water_current: Rational64::from_integer(1) / 2
                 },
                 LocalMaximum {
                     begin: 9,
                     width: 1,
-                    water_current: ZERO
                 }
             ]
         );
