@@ -26,7 +26,7 @@ finiterain $ cargo test
 
 ## Running of the app
 
-You can run the app with `cargo`, first parameter is the number of hours rain is falling (amount of water that falls to every segment), other parameters are segment sizes. Segmaint size sgould fit to `u32`.
+You can run the app with `cargo`, first parameter is the number of hours rain is falling (amount of water that falls to every segment), other parameters are segment sizes. Segment size sgould fit to `u32`.
 
 ```
 finiterain $ cargo run 2 1 5 5
