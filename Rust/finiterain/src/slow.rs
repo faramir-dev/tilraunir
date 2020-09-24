@@ -8,7 +8,6 @@ use std::vec::Vec;
 struct LocalMinimum {
     begin: usize,
     width: usize,
-    depth: Rational64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,11 +35,9 @@ fn find_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
             }
             end += 1;
         }
-        let min_val = landscape[begin];
         LocalMinimum {
             begin,
             width: end - begin,
-            depth: min(landscape[begin - 1], landscape[end]) - min_val,
         }
     };
     let find_maximum = |from: usize| -> LocalMaximum {
@@ -92,6 +89,15 @@ fn find_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Ra
         .collect()
 }
 
+fn find_depths(landscape: &[Rational64], minimas: &LocalMinimas) -> Vec<Rational64> {
+    (0..minimas.len()).map(|i| {
+        let begin = minimas[i].begin;
+        let end = begin + minimas[i].width;
+        let min_val = landscape[begin];
+        min(landscape[begin - 1], landscape[end]) - min_val
+    }).collect()
+}
+
 pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     let len = landscape.len();
     assert!(len >= 4);
@@ -103,10 +109,12 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     while remaining_time > ZERO {
         let (maximas, minimas) = find_extremes(landscape);
         let currents = find_water_currents(&maximas, &minimas);
+        let depths = find_depths(landscape, &minimas);
         let min_time = currents
             .iter()
             .zip(minimas.iter())
-            .map(|(current, minima)| minima.depth * minima.width as i64 / current)
+            .zip(depths)
+            .map(|((current, minima), depth)| depth * minima.width as i64 / current)
             .min()
             .unwrap();
         let step_time = std::cmp::min(min_time, remaining_time);
@@ -147,7 +155,6 @@ fn test_find_extremes() {
             &[LocalMinimum {
                 begin: 1,
                 width: 1,
-                depth: MAX - 2
             }]
         );
     }
@@ -188,12 +195,10 @@ fn test_find_extremes() {
                 LocalMinimum {
                     begin: 2,
                     width: 1,
-                    depth: Rational64::from_integer(2),
                 },
                 LocalMinimum {
                     begin: 4,
                     width: 1,
-                    depth: Rational64::from_integer(2),
                 }
             ]
         );
@@ -237,12 +242,10 @@ fn test_find_extremes() {
                 LocalMinimum {
                     begin: 2,
                     width: 1,
-                    depth: Rational64::from_integer(2),
                 },
                 LocalMinimum {
                     begin: 4,
                     width: 3,
-                    depth: Rational64::from_integer(4)
                 }
             ]
         );
