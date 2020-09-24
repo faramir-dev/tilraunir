@@ -2,22 +2,13 @@ use crate::{MAX, ZERO};
 use num_rational::Rational64;
 use std::assert;
 use std::cmp::min;
+use std::ops::Range;
 use std::vec::Vec;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct LocalMinimum {
-    begin: usize,
-    width: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct LocalMaximum {
-    begin: usize,
-    width: usize,
-}
-
-type LocalMaximas = Vec<LocalMaximum>;
-type LocalMinimas = Vec<LocalMinimum>;
+type LocalMinimum = Range<usize>;
+type LocalMaximum = Range<usize>;
+type LocalMaximas = Vec<LocalMinimum>;
+type LocalMinimas = Vec<LocalMaximum>;
 
 fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
     let len = landscape.len();
@@ -27,44 +18,40 @@ fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) 
     let find_minimum = |from: usize| -> LocalMinimum {
         assert!(from + 2 < len);
 
-        let mut begin = from;
+        let mut start = from;
         let mut end = from + 1;
-        while landscape[begin] >= landscape[end] {
-            if landscape[begin] > landscape[end] {
-                begin = end;
+        while landscape[start] >= landscape[end] {
+            if landscape[start] > landscape[end] {
+                start = end;
             }
             end += 1;
         }
-        LocalMinimum {
-            begin,
-            width: end - begin,
-        }
+        start..end
     };
     let find_maximum = |from: usize| -> LocalMaximum {
         assert!(from + 1 < len);
 
-        let mut begin = from;
+        let mut start = from;
         let mut end = from + 1;
-        while landscape[begin] <= landscape[end] {
-            if landscape[begin] < landscape[end] {
-                begin = end;
+        while landscape[start] <= landscape[end] {
+            if landscape[start] < landscape[end] {
+                start = end;
             }
             end += 1;
         }
-        let width = end - begin;
-        LocalMaximum { begin, width }
+        start..end
     };
 
-    local_maximas.push(LocalMaximum { begin: 0, width: 1 });
+    local_maximas.push(0..1);
 
     let mut from = 1;
     while from + 1 < len {
         let minimum = find_minimum(from);
-        from = minimum.begin + minimum.width;
+        from = minimum.end;
         local_minimas.push(minimum);
 
         let maximum = find_maximum(from);
-        from = maximum.begin + maximum.width;
+        from = maximum.end;
         local_maximas.push(maximum);
     }
     (local_maximas, local_minimas)
@@ -75,18 +62,17 @@ fn calculate_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> V
         .map(|i| {
             let left = &maximas[i];
             let right = &maximas[i + 1];
-            let left_end = left.begin + left.width;
             let left_current = if i > 0 {
-                Rational64::from_integer(left.width as i64) / 2
+                Rational64::from_integer(left.len() as i64) / 2
             } else {
                 ZERO
             };
             let right_current = if i + 1 < minimas.len() {
-                Rational64::from_integer(right.width as i64) / 2
+                Rational64::from_integer(right.len() as i64) / 2
             } else {
                 ZERO
             };
-            left_current + right_current + (right.begin - left_end) as i64
+            left_current + right_current + (right.start - left.end) as i64
         })
         .collect()
 }
@@ -94,10 +80,10 @@ fn calculate_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> V
 fn calculate_depths(landscape: &[Rational64], minimas: &LocalMinimas) -> Vec<Rational64> {
     (0..minimas.len())
         .map(|i| {
-            let begin = minimas[i].begin;
-            let end = begin + minimas[i].width;
-            let min_val = landscape[begin];
-            min(landscape[begin - 1], landscape[end]) - min_val
+            let start = minimas[i].start;
+            let end = minimas[i].end;
+            let min_val = landscape[start];
+            min(landscape[start - 1], landscape[end]) - min_val
         })
         .collect()
 }
@@ -118,7 +104,7 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
             .iter()
             .zip(minimas.iter())
             .zip(depths)
-            .map(|((current, minima), depth)| depth * minima.width as i64 / current)
+            .map(|((current, minima), depth)| depth * minima.len() as i64 / current)
             .min()
             .unwrap();
         let step_time = std::cmp::min(min_time, remaining_time);
@@ -126,9 +112,9 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
         remaining_time -= step_time;
         for idx in 0..minimas.len() {
             let current = currents[idx];
-            let add = current * step_time / minimas[idx].width as i64;
-            let b = minimas[idx].begin;
-            let e = b + minimas[idx].width;
+            let add = current * step_time / minimas[idx].len() as i64;
+            let b = minimas[idx].start;
+            let e = minimas[idx].end;
             for i in b..e {
                 landscape[i] += add;
             }
@@ -141,14 +127,8 @@ fn test_find_extremes() {
     {
         let landscape = vec![MAX, Rational64::from_integer(2), MAX, ZERO];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(
-            &maximas[..],
-            &[
-                LocalMaximum { begin: 0, width: 1 },
-                LocalMaximum { begin: 2, width: 1 }
-            ]
-        );
-        assert_eq!(&minimas[..], &[LocalMinimum { begin: 1, width: 1 }]);
+        assert_eq!(&maximas[..], &[0..1, 2..3,]);
+        assert_eq!(&minimas[..], &[1..2]);
     }
 
     {
@@ -164,21 +144,8 @@ fn test_find_extremes() {
             ZERO,
         ];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(
-            &maximas[..],
-            &[
-                LocalMaximum { begin: 0, width: 1 },
-                LocalMaximum { begin: 3, width: 1 },
-                LocalMaximum { begin: 7, width: 1 }
-            ]
-        );
-        assert_eq!(
-            &minimas[..],
-            &[
-                LocalMinimum { begin: 2, width: 1 },
-                LocalMinimum { begin: 4, width: 1 }
-            ]
-        );
+        assert_eq!(&maximas[..], &[0..1, 3..4, 7..8,]);
+        assert_eq!(&minimas[..], &[2..3, 4..5,]);
     }
 
     {
@@ -196,21 +163,8 @@ fn test_find_extremes() {
             ZERO,
         ];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(
-            &maximas[..],
-            &[
-                LocalMaximum { begin: 0, width: 1 },
-                LocalMaximum { begin: 3, width: 1 },
-                LocalMaximum { begin: 9, width: 1 }
-            ]
-        );
-        assert_eq!(
-            &minimas[..],
-            &[
-                LocalMinimum { begin: 2, width: 1 },
-                LocalMinimum { begin: 4, width: 3 }
-            ]
-        );
+        assert_eq!(&maximas[..], &[0..1, 3..4, 9..10,]);
+        assert_eq!(&minimas[..], &[2..3, 4..7,]);
     }
 }
 #[test]
