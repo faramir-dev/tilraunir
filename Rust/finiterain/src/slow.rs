@@ -7,8 +7,8 @@ use std::vec::Vec;
 
 type LocalMinimum = Range<usize>;
 type LocalMaximum = Range<usize>;
-type LocalMaximas = Vec<LocalMinimum>;
-type LocalMinimas = Vec<LocalMaximum>;
+type LocalMaximas = Vec<LocalMaximum>;
+type LocalMinimas = Vec<LocalMinimum>;
 
 fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
     let len = landscape.len();
