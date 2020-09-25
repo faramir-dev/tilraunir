@@ -65,12 +65,12 @@ fn calculate_water_currents(maximas: &LocalMaximas) -> Vec<Rational64> {
     let mut left = &maximas[0];
     let mut left_current = ZERO;
     for i in 1..maximas.len() {
-            let right = &maximas[i];
-            let right_current = Rational64::from_integer(right.len() as i64) / 2;
-            ret.push(left_current + right_current + (right.start - left.end) as i64);
-            left = &right;
-            left_current = right_current;
-        }
+        let right = &maximas[i];
+        let right_current = Rational64::from_integer(right.len() as i64) / 2;
+        ret.push(left_current + right_current + (right.start - left.end) as i64);
+        left = &right;
+        left_current = right_current;
+    }
     ret
 }
 
