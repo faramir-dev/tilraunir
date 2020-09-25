@@ -42,8 +42,7 @@ fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) 
         start..end
     };
 
-    local_maximas.push(0..1);
-
+    local_maximas.push(1..1);
     let mut from = 1;
     while from + 1 < len {
         let minimum = find_minimum(from);
@@ -54,6 +53,10 @@ fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) 
         from = maximum.end;
         local_maximas.push(maximum);
     }
+    let last_idx = local_maximas.len() - 1;
+    let mut last = &mut local_maximas[last_idx];
+    last.end = last.start;
+
     (local_maximas, local_minimas)
 }
 
@@ -62,28 +65,9 @@ fn calculate_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> V
         .map(|i| {
             let left = &maximas[i];
             let right = &maximas[i + 1];
-            let left_current = if i > 0 {
-                Rational64::from_integer(left.len() as i64) / 2
-            } else {
-                ZERO
-            };
-            let right_current = if i + 1 < minimas.len() {
-                Rational64::from_integer(right.len() as i64) / 2
-            } else {
-                ZERO
-            };
+            let left_current = Rational64::from_integer(left.len() as i64) / 2;
+            let right_current = Rational64::from_integer(right.len() as i64) / 2;
             left_current + right_current + (right.start - left.end) as i64
-        })
-        .collect()
-}
-
-fn calculate_depths(landscape: &[Rational64], minimas: &LocalMinimas) -> Vec<Rational64> {
-    (0..minimas.len())
-        .map(|i| {
-            let start = minimas[i].start;
-            let end = minimas[i].end;
-            let min_val = landscape[start];
-            min(landscape[start - 1], landscape[end]) - min_val
         })
         .collect()
 }
@@ -99,7 +83,12 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     while remaining_time > ZERO {
         let (maximas, minimas) = calculate_extremes(landscape);
         let currents = calculate_water_currents(&maximas, &minimas);
-        let depths = calculate_depths(landscape, &minimas);
+        let depths = (0..minimas.len()).map(|i| {
+            let start = minimas[i].start;
+            let end = minimas[i].end;
+            let min_val = landscape[start];
+            min(landscape[start - 1], landscape[end]) - min_val
+        });
         let min_time = currents
             .iter()
             .zip(minimas.iter())
@@ -123,11 +112,11 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
 }
 
 #[test]
-fn test_find_extremes() {
+fn test_calculate_extremes() {
     {
         let landscape = vec![MAX, Rational64::from_integer(2), MAX, ZERO];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(&maximas[..], &[0..1, 2..3,]);
+        assert_eq!(&maximas[..], &[1..1, 2..2,]);
         assert_eq!(&minimas[..], &[1..2]);
     }
 
@@ -144,7 +133,7 @@ fn test_find_extremes() {
             ZERO,
         ];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(&maximas[..], &[0..1, 3..4, 7..8,]);
+        assert_eq!(&maximas[..], &[1..1, 3..4, 7..7,]);
         assert_eq!(&minimas[..], &[2..3, 4..5,]);
     }
 
@@ -163,7 +152,7 @@ fn test_find_extremes() {
             ZERO,
         ];
         let (maximas, minimas) = calculate_extremes(&landscape);
-        assert_eq!(&maximas[..], &[0..1, 3..4, 9..10,]);
+        assert_eq!(&maximas[..], &[1..1, 3..4, 9..9,]);
         assert_eq!(&minimas[..], &[2..3, 4..7,]);
     }
 }
