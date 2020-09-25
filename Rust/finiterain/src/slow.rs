@@ -85,7 +85,7 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     while remaining_time > ZERO {
         let (maximas, minimas) = calculate_extremes(landscape);
         let currents = calculate_water_currents(&maximas);
-        let depths = (0..minimas.len()).map(|i| {
+        let depths_iter = (0..minimas.len()).map(|i| {
             let start = minimas[i].start;
             let end = minimas[i].end;
             let min_val = landscape[start];
@@ -94,7 +94,7 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
         let min_time = currents
             .iter()
             .zip(minimas.iter())
-            .zip(depths)
+            .zip(depths_iter)
             .map(|((current, minima), depth)| depth * minima.len() as i64 / current)
             .min()
             .unwrap();
