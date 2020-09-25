@@ -60,16 +60,18 @@ fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) 
     (local_maximas, local_minimas)
 }
 
-fn calculate_water_currents(maximas: &LocalMaximas, minimas: &LocalMinimas) -> Vec<Rational64> {
-    (0..minimas.len())
-        .map(|i| {
-            let left = &maximas[i];
-            let right = &maximas[i + 1];
-            let left_current = Rational64::from_integer(left.len() as i64) / 2;
+fn calculate_water_currents(maximas: &LocalMaximas) -> Vec<Rational64> {
+    let mut ret = Vec::new();
+    let mut left = &maximas[0];
+    let mut left_current = ZERO;
+    for i in 1..maximas.len() {
+            let right = &maximas[i];
             let right_current = Rational64::from_integer(right.len() as i64) / 2;
-            left_current + right_current + (right.start - left.end) as i64
-        })
-        .collect()
+            ret.push(left_current + right_current + (right.start - left.end) as i64);
+            left = &right;
+            left_current = right_current;
+        }
+    ret
 }
 
 pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
@@ -82,7 +84,7 @@ pub(crate) fn calculate(total_time: Rational64, landscape: &mut [Rational64]) {
     let mut remaining_time = total_time;
     while remaining_time > ZERO {
         let (maximas, minimas) = calculate_extremes(landscape);
-        let currents = calculate_water_currents(&maximas, &minimas);
+        let currents = calculate_water_currents(&maximas);
         let depths = (0..minimas.len()).map(|i| {
             let start = minimas[i].start;
             let end = minimas[i].end;
