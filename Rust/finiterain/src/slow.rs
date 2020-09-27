@@ -11,51 +11,31 @@ type LocalMaximas = Vec<LocalMaximum>;
 type LocalMinimas = Vec<LocalMinimum>;
 
 fn calculate_extremes(landscape: &[Rational64]) -> (LocalMaximas, LocalMinimas) {
-    let len = landscape.len();
     let mut local_maximas: LocalMaximas = Vec::new();
     let mut local_minimas: LocalMinimas = Vec::new();
 
-    let find_minimum = |from: usize| -> LocalMinimum {
-        assert!(from + 2 < len);
-
-        let mut start = from;
-        let mut end = from + 1;
-        while landscape[start] >= landscape[end] {
-            if landscape[start] > landscape[end] {
-                start = end;
-            }
-            end += 1;
-        }
-        start..end
-    };
-    let find_maximum = |from: usize| -> LocalMaximum {
-        assert!(from + 1 < len);
-
-        let mut start = from;
-        let mut end = from + 1;
-        while landscape[start] <= landscape[end] {
-            if landscape[start] < landscape[end] {
-                start = end;
-            }
-            end += 1;
-        }
-        start..end
-    };
-
     local_maximas.push(1..1);
-    let mut from = 1;
-    while from + 1 < len {
-        let minimum = find_minimum(from);
-        from = minimum.end;
-        local_minimas.push(minimum);
-
-        let maximum = find_maximum(from);
-        from = maximum.end;
-        local_maximas.push(maximum);
+    let mut prev = (0, MAX);
+    let mut curr = (1, landscape[1]);
+    loop {
+        match (curr.0 + 1..landscape.len() - 2).find(|&i| landscape[i] != curr.1) {
+            Some(next_idx) => {
+                let next = (next_idx, landscape[next_idx]);
+                if prev.1 > curr.1 && curr.1 < next.1 {
+                    local_minimas.push(curr.0..next.0);
+                } else if prev.1 < curr.1 && curr.1 > next.1 {
+                    local_maximas.push(curr.0..next.0);
+                }
+                prev = curr;
+                curr = next;
+            }
+            None => break,
+        };
     }
-    let last_idx = local_maximas.len() - 1;
-    let mut last = &mut local_maximas[last_idx];
-    last.end = last.start;
+    if prev.1 > curr.1 {
+        local_minimas.push(curr.0..landscape.len() - 2);
+    }
+    local_maximas.push(landscape.len() - 2..landscape.len() - 2);
 
     (local_maximas, local_minimas)
 }
