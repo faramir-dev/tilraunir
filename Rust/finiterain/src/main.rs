@@ -35,20 +35,15 @@ fn main() {
             Fmt(&cfg.landscape[..])
         );
 
-        let mut landscape = vec![MAX];
-        landscape.extend(
-            cfg.landscape
-                .iter()
-                .map(|x| Rational64::from_integer(*x))
-                .collect::<Vec<Rational64>>(),
-        );
-        // Add one local maximum to the end of the landscape to simplify iterations.
-        landscape.push(MAX);
-        landscape.push(ZERO);
+        let mut landscape = cfg
+            .landscape
+            .iter()
+            .map(|x| Rational64::from_integer(*x))
+            .collect::<Vec<Rational64>>();
 
         let time = Rational64::from_integer(cfg.total_time);
         slow::calculate(time, &mut landscape);
-        println!("> Result: {};", Fmt(&landscape[1..landscape.len() - 2]));
+        println!("> Result: {};", Fmt(&landscape[..]));
 
         Ok(())
     }();
