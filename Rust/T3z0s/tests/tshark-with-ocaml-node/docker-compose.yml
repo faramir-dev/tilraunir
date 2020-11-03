@@ -1,0 +1,36 @@
+version: "3"
+
+volumes:
+  node_data:
+  client_data:
+  tmp:
+
+services:
+  tshark:
+    user: root
+    image: meavelabs/tshark:latest
+    hostname: tshark
+    command: /home/appuser/tests/tshark-with-ocaml-node/bin/listen-to-tezos-node.sh
+    volumes:
+      - node_data:/var/run/tezos/node
+      - client_data:/var/run/tezos/client
+      - tmp:/tmp
+    restart: "no"
+  tezos_node:
+    user: root
+    image: meavelabs/tezos:v7.3
+    depends_on:
+      - tshark
+    network_mode: "service:tshark"
+    privileged: true
+#    hostname: node
+    entrypoint: /usr/local/Tezos/bin/start-tezos-node.sh
+#    ports:
+#      - "19732:19732"
+#    expose:
+#      - "8732"
+    volumes:
+      - node_data:/var/run/tezos/node
+      - client_data:/var/run/tezos/client
+      - tmp:/tmp
+    restart: "no"
