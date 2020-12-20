@@ -1,5 +1,5 @@
-##### FIxed constexpr strings and `template<char...>`
+##### FIxed `constexpr` strings and `template<char...>`
 
-- `FixedString` -- consexpr sting yhay syores characters in buffer.
-- `VarString<char...>` -- stores characters as template arguments.
-- `to_var_string` -- converts `FixedString` to `VarString`.
+- `FixedString` -- It is `constexpr` string-like type that stores characters in a buffer.
+- `VarString<char...>` -- It stores characters as template arguments.
+- `to_var_string` -- Function (`constexpr`) that converts `FixedString` to `VarString`.
