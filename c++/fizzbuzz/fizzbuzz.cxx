@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -26,5 +27,19 @@ void fizzbuzz(int const x) {
         printf("Fizz\n");
     } else {
         printf("%d\n", x);
+    }
+}
+
+int fizzbuzz_val(std::uint32_t const x) {
+    if (x % 5 == 0) {
+        if (x % 3 == 0) {
+            return -3;
+        } else {
+            return -2;
+        }
+    } else if (x % 3 == 0) {
+        return -1;
+    } else {
+        return int(x);
     }
 }
