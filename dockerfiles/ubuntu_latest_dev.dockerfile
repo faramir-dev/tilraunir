@@ -16,6 +16,7 @@ RUN set -eux; \
       llvm \
       libgcrypt-dev \
       libssl-dev \
+      mc \
       neovim \
       pkg-config \
       ripgrep;
