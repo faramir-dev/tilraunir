@@ -7,18 +7,18 @@ RUN set -eux; \
       bison \
       build-essential \
       clang \
-      g++-10 \
-      curl \
       cmake \
+      curl \
       flex \
+      g++-10 \
       git \
       libc-ares-dev \
-      llvm \
       libgcrypt-dev \
       libgmp-dev \
-      libmpfr-dev \
       libmpc-dev \
+      libmpfr-dev \
       libssl-dev \
+      llvm \
       mc \
       neovim \
       pkg-config \
